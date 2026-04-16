@@ -177,9 +177,10 @@
 
     /* ─── Email Form ─── */
     .email-form {
-      display: flex; gap: 10px; max-width: 460px;
+      display: flex; flex-direction: column; gap: 10px; max-width: 460px;
       animation: fadeUp 0.6s ease 0.3s both;
     }
+    .email-row { display: flex; gap: 10px; }
     .email-input {
       flex: 1;
       background: rgba(255,255,255,0.05);
@@ -502,7 +503,7 @@
       pointer-events: none;
     }
     .cta-form {
-      display: flex; gap: 10px; max-width: 440px; margin: 0 auto;
+      display: flex; flex-direction: column; gap: 10px; max-width: 440px; margin: 0 auto;
     }
     .cta-form .email-input {
       background: rgba(255,255,255,0.06);
@@ -538,9 +539,8 @@
       .mockup-wrap { display: none; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .problem-grid, .steps, .features-grid { grid-template-columns: 1fr; }
-      .email-form { flex-direction: column; }
+      .email-row { flex-direction: column; }
       .email-input, .btn-primary { width: 100%; }
-      .cta-form { flex-direction: column; align-items: stretch; }
       .cta-wrap { padding: 48px 24px; }
     }
     @media (max-width: 480px) {
@@ -588,17 +588,27 @@
 
           <form class="email-form" id="hero-form" novalidate>
             <input
-              type="email"
-              id="hero-email"
+              type="text"
+              id="hero-name"
               class="email-input"
-              placeholder="Enter your email address"
-              required
-              autocomplete="email"
-              aria-label="Your email for the waitlist"
+              placeholder="Your first name"
+              autocomplete="given-name"
+              aria-label="Your first name"
             />
-            <button type="submit" id="hero-submit" class="btn-primary">
-              Join Waitlist
-            </button>
+            <div class="email-row">
+              <input
+                type="email"
+                id="hero-email"
+                class="email-input"
+                placeholder="Enter your email address"
+                required
+                autocomplete="email"
+                aria-label="Your email for the waitlist"
+              />
+              <button type="submit" id="hero-submit" class="btn-primary">
+                Join Waitlist
+              </button>
+            </div>
           </form>
           <div class="error-msg" id="hero-error" role="alert"></div>
           <div class="success-msg" id="hero-success" role="status">
@@ -880,17 +890,27 @@
         </p>
         <form class="cta-form" id="cta-form" novalidate>
           <input
-            type="email"
-            id="cta-email"
+            type="text"
+            id="cta-name"
             class="email-input"
-            placeholder="your@email.com"
-            required
-            autocomplete="email"
-            aria-label="Your email for early access"
+            placeholder="Your first name"
+            autocomplete="given-name"
+            aria-label="Your first name"
           />
-          <button type="submit" id="cta-submit" class="btn-primary">
-            Get Early Access
-          </button>
+          <div class="email-row">
+            <input
+              type="email"
+              id="cta-email"
+              class="email-input"
+              placeholder="your@email.com"
+              required
+              autocomplete="email"
+              aria-label="Your email for early access"
+            />
+            <button type="submit" id="cta-submit" class="btn-primary">
+              Get Early Access
+            </button>
+          </div>
         </form>
         <div class="error-msg" id="cta-error" role="alert" style="margin: 8px auto 0; max-width:440px;"></div>
         <div class="success-msg" id="cta-success" role="status" style="margin: 14px auto 0; max-width:440px;">
@@ -953,43 +973,46 @@
       q.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
     });
 
-    /* ─── ActiveCampaign Integration ─── */
-    const AC = {
-      url: 'https://proeo.api-us1.com',
-      key: '13ed8a45373e82931fca3a1f52f3328aea198dcb988da0b3c53fddc69fbd888f6125a10a',
-      listId: 10
+    /* ─── ActiveCampaign Integration via proc.php (JSONP — no CORS) ─── */
+    const AC_PARAMS = {
+      u: '4', f: '4', s: '', c: '0', m: '0',
+      act: 'sub', v: '2',
+      or: 'f99803d1-37f3-4e39-87ba-17db6566a4a9'
     };
 
-    async function subscribeToWaitlist(email) {
-      /* Step 1 – create / sync contact */
-      const r1 = await fetch(`${AC.url}/api/3/contacts`, {
-        method: 'POST',
-        headers: { 'Api-Token': AC.key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact: { email } })
-      });
-      if (!r1.ok) throw new Error('Could not create contact');
-      const { contact } = await r1.json();
+    function subscribeAC(name, email) {
+      return new Promise((resolve, reject) => {
+        /* Temporarily hijack AC's JSONP callbacks */
+        const prevThankYou = window._show_thank_you;
+        const prevError    = window._show_error;
+        const cleanup = () => {
+          window._show_thank_you = prevThankYou;
+          window._show_error     = prevError;
+        };
+        window._show_thank_you = () => { cleanup(); resolve(); };
+        window._show_error     = (id, msg) => { cleanup(); reject(new Error(msg || 'Submission failed')); };
 
-      /* Step 2 – add to waitlist list */
-      const r2 = await fetch(`${AC.url}/api/3/contactLists`, {
-        method: 'POST',
-        headers: { 'Api-Token': AC.key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactList: { list: AC.listId, contact: contact.id, status: 1 } })
+        const params = new URLSearchParams({ ...AC_PARAMS, fullname: name, email });
+        const script = document.createElement('script');
+        script.src = `https://proeo.activehosted.com/proc.php?${params.toString()}&jsonp=true`;
+        script.onerror = () => { cleanup(); reject(new Error('Network error')); };
+        document.head.appendChild(script);
       });
-      if (!r2.ok) throw new Error('Could not add to list');
     }
 
     function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
 
-    function bindForm({ formId, emailId, submitId, successId, errorId, submitLabel }) {
-      const form    = document.getElementById(formId);
-      const emailEl = document.getElementById(emailId);
-      const submitEl = document.getElementById(submitId);
+    function bindForm({ formId, nameId, emailId, submitId, successId, errorId, submitLabel }) {
+      const form      = document.getElementById(formId);
+      const nameEl    = document.getElementById(nameId);
+      const emailEl   = document.getElementById(emailId);
+      const submitEl  = document.getElementById(submitId);
       const successEl = document.getElementById(successId);
-      const errorEl  = document.getElementById(errorId);
+      const errorEl   = document.getElementById(errorId);
 
       form.addEventListener('submit', async e => {
         e.preventDefault();
+        const name  = nameEl ? nameEl.value.trim() : '';
         const email = emailEl.value.trim();
 
         errorEl.classList.remove('show');
@@ -1005,7 +1028,7 @@
         submitEl.textContent = 'Joining…';
 
         try {
-          await subscribeToWaitlist(email);
+          await subscribeAC(name, email);
           form.style.display = 'none';
           successEl.classList.add('show');
         } catch (err) {
@@ -1018,8 +1041,8 @@
       });
     }
 
-    bindForm({ formId: 'hero-form', emailId: 'hero-email', submitId: 'hero-submit', successId: 'hero-success', errorId: 'hero-error', submitLabel: 'Join Waitlist' });
-    bindForm({ formId: 'cta-form',  emailId: 'cta-email',  submitId: 'cta-submit',  successId: 'cta-success',  errorId: 'cta-error',  submitLabel: 'Get Early Access' });
+    bindForm({ formId: 'hero-form', nameId: 'hero-name', emailId: 'hero-email', submitId: 'hero-submit', successId: 'hero-success', errorId: 'hero-error', submitLabel: 'Join Waitlist' });
+    bindForm({ formId: 'cta-form',  nameId: 'cta-name',  emailId: 'cta-email',  submitId: 'cta-submit',  successId: 'cta-success',  errorId: 'cta-error',  submitLabel: 'Get Early Access' });
   </script>
 </body>
 </html>
